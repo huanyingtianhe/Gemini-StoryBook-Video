@@ -8,6 +8,5 @@ if (-not $StoryUrl -or $StoryUrl.Trim() -eq "") {
 }
 
 node grab_story.js --url "$StoryUrl"
-.\download_images.ps1
 python tts_azure.py
 .\make_video.ps1

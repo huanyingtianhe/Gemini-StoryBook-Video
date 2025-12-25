@@ -34,6 +34,9 @@ const TEXT_BLOCKLIST = new Set([
 const DEBUG = process.env.DEBUG_SCRAPER === "1";
 
 const dataDir = "data";
+const imageDir = "images";
+
+fs.mkdirSync(imageDir, { recursive: true });
 
 function normalizeText(raw) {
   if (!raw) {
@@ -95,34 +98,8 @@ async function getCurrentSpreadData(page) {
       return chunks.join("\n\n");
     };
 
-    const collectImage = () => {
-      const isCover = /cover/i.test(pageLabel || "") || pageLabel === "";
-
-      if (isCover) {
-        const coverImg = document.querySelector(".cover img[src*='googleusercontent.com']");
-        if (coverImg) {
-          return coverImg.currentSrc || coverImg.src;
-        }
-      }
-
-      const selectors = [
-        ".page-content.main.left img[src*='googleusercontent.com']",
-        ".page-content.left img[src*='googleusercontent.com']",
-        ".page-content.right img[src*='googleusercontent.com']",
-        "img[src*='googleusercontent.com']"
-      ];
-      for (const selector of selectors) {
-        const el = spread.querySelector(selector);
-        if (el) {
-          return el.currentSrc || el.src;
-        }
-      }
-      return null;
-    };
-
     return {
       text: collectText(),
-      imageUrl: collectImage(),
       pageLabel
     };
   });
@@ -190,6 +167,7 @@ async function clickStartOver(page) {
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  await page.setViewportSize({ width: 1400, height: 1100 });
   console.log("browser ready");
 
   try {
@@ -249,18 +227,51 @@ async function clickStartOver(page) {
       const textIsValid =
         normalizedText.length >= MIN_TEXT_LENGTH &&
         !TEXT_BLOCKLIST.has(normalizedText);
-      const key = `${snapshot.pageLabel || pages.length}|${normalizedText}|${snapshot.imageUrl || "no-image"}`;
+      const key = `${snapshot.pageLabel || pages.length}|${normalizedText}`;
 
       if (DEBUG) {
-        console.log(`snapshot ${iterations}: label=${snapshot.pageLabel} img=${snapshot.imageUrl?.slice(0, 60) || "none"}`);
+        console.log(`snapshot ${iterations}: label=${snapshot.pageLabel}`);
         console.log(`text (${normalizedText.length} chars): ${normalizedText}`);
       }
 
-      if (textIsValid && !seenKeys.has(key) && !(snapshot.pageLabel && seenLabels.has(snapshot.pageLabel))) {
+      const shouldCapture = textIsValid && !seenKeys.has(key) && !(snapshot.pageLabel && seenLabels.has(snapshot.pageLabel));
+
+      if (shouldCapture) {
+        const pageId = pages.length + 1;
+        const imagePath = `${imageDir}/page_${pageId}.png`;
+        const spreadHandle = await page.$(".spread-container:not(.hide)");
+        const viewport = page.viewportSize();
+        const padding = 56;
+
+        if (spreadHandle) {
+          const box = await spreadHandle.boundingBox();
+          if (box && viewport) {
+            const centerX = box.x + box.width / 2;
+            const centerY = box.y + box.height / 2;
+            const desiredW = Math.min(viewport.width, box.width + padding * 2);
+            const desiredH = Math.min(viewport.height, box.height + padding * 2);
+
+            // Horizontally center to viewport to avoid left/right bias (covers look balanced)
+            const clipW = Math.min(viewport.width, desiredW);
+            const clipX = Math.max(0, Math.min(viewport.width - clipW, viewport.width / 2 - clipW / 2));
+
+            // Vertically center around spread to keep text in view
+            const clipH = Math.min(viewport.height, desiredH);
+            const rawY = centerY - clipH / 2;
+            const clipY = Math.max(0, Math.min(viewport.height - clipH, rawY));
+
+            await page.screenshot({ path: imagePath, clip: { x: clipX, y: clipY, width: clipW, height: clipH } });
+          } else {
+            await page.screenshot({ path: imagePath, fullPage: true });
+          }
+        } else {
+          await page.screenshot({ path: imagePath, fullPage: true });
+        }
+
         pages.push({
-          id: pages.length + 1,
+          id: pageId,
           text: normalizedText,
-          imageUrl: snapshot.imageUrl
+          imagePath
         });
         seenKeys.add(key);
         if (snapshot.pageLabel) {
@@ -293,7 +304,7 @@ async function clickStartOver(page) {
       await waitForSpreadChange(page, {
         pageLabel: snapshot.pageLabel,
         text: normalizedText,
-        imageUrl: snapshot.imageUrl
+        imageUrl: null
       });
       await page.waitForTimeout(500);
     }
