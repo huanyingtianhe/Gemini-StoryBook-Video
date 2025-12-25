@@ -46,10 +46,12 @@ Ensure the downloaded files match the paths in `tts_piper.py`.
 ## Usage
 - Full pipeline (Azure TTS path):
 ```pwsh
-pwsh .\run.ps1
+pwsh .\run.ps1                # prompts for Gemini share URL
+# or
+pwsh .\run.ps1 -StoryUrl "https://gemini.google.com/share/..."  # preferred; no env vars
 ```
 - Individual steps:
-  - Scrape story: `node grab_story.js` (outputs `data/story.json`).
+  - Scrape story: `node grab_story.js --url "https://gemini.google.com/share/..."` (preferred). Outputs `data/story.json`.
   - Download images: `pwsh .\download_images.ps1`.
   - Azure TTS: `python tts_azure.py`.
   - Piper TTS: `python tts_piper.py`.

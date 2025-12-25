@@ -1,7 +1,22 @@
 import { chromium } from "playwright";
 import fs from "fs";
 
-const URL = "https://gemini.google.com/share/6294ee928648";
+function resolveUrl() {
+  // Prefer --url flag, then first positional arg, then STORY_URL env.
+  const flagIndex = process.argv.indexOf("--url");
+  if (flagIndex !== -1 && process.argv[flagIndex + 1]) {
+    return process.argv[flagIndex + 1];
+  }
+  if (process.argv[2] && !process.argv[2].startsWith("--")) {
+    return process.argv[2];
+  }
+  if (process.env.STORY_URL) {
+    return process.env.STORY_URL;
+  }
+  throw new Error("Provide a story URL via --url, positional arg, or STORY_URL env var.");
+}
+
+const URL = resolveUrl();
 const NAV_TIMEOUT_MS = Number(process.env.NAV_TIMEOUT_MS ?? 90000);
 const POST_LOAD_WAIT_MS = Number(process.env.POST_LOAD_WAIT_MS ?? 5000);
 const CONTENT_TIMEOUT_MS = Number(process.env.CONTENT_TIMEOUT_MS ?? 45000);
